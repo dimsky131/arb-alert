@@ -26,7 +26,12 @@ export const config = {
     chatId: process.env.TELEGRAM_CHAT_ID || '',
   },
   // Pairs known to the system. Toggled on/off at runtime via settings.
-  supportedPairs: ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT'],
+ supportedPairs: [
+    'BTC/USDT', 'ETH/USDT', 'XRP/USDT', 'BNB/USDT', 'SOL/USDT',
+    'DOGE/USDT', 'ADA/USDT', 'TRX/USDT', 'LINK/USDT', 'AVAX/USDT',
+    'SUI/USDT', 'XLM/USDT', 'TON/USDT', 'SHIB/USDT', 'DOT/USDT',
+    'BCH/USDT', 'HBAR/USDT', 'LTC/USDT', 'UNI/USDT', 'NEAR/USDT',
+  ],
   defaultCooldownMinutes: 5,
   maxAlertHistory: 200,
   dataDir: new URL('../data/', import.meta.url).pathname,
