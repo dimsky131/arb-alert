@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { config } from '../config.js'
+import { getPairs } from './universe.js'
 import { createLogger } from '../utils/logger.js'
 
 const log = createLogger('store')
@@ -10,12 +11,14 @@ const SETTINGS_FILE = path.join(config.dataDir, 'settings.json')
 const ALERTS_FILE = path.join(config.dataDir, 'alerts.json')
 
 function defaultSettings() {
-  const pairs = {}
-  for (const pair of config.supportedPairs) pairs[pair] = true
   return {
     threshold: config.defaultThreshold,
     cooldownMinutes: config.defaultCooldownMinutes,
-    pairs,
+    // Taker fee (%) per exchange, applied to net-spread calculation.
+    fees: { ...config.defaultFees },
+    // The universe is dynamic (top pairs by volume), so we persist an
+    // exclusion list instead of a fixed pair map.
+    disabledPairs: [],
   }
 }
 
@@ -56,11 +59,17 @@ class Store {
         cooldownMinutes: Number.isFinite(savedSettings.cooldownMinutes)
           ? savedSettings.cooldownMinutes
           : defaults.cooldownMinutes,
-        pairs: { ...defaults.pairs, ...(savedSettings.pairs || {}) },
+        fees: { ...defaults.fees },
+        disabledPairs: Array.isArray(savedSettings.disabledPairs)
+          ? savedSettings.disabledPairs.filter((p) => typeof p === 'string')
+          : [],
       }
-      // Drop unknown pairs.
-      for (const pair of Object.keys(this.settings.pairs)) {
-        if (!config.supportedPairs.includes(pair)) delete this.settings.pairs[pair]
+      // Merge saved fee overrides for known exchanges only.
+      if (savedSettings.fees && typeof savedSettings.fees === 'object') {
+        for (const ex of Object.keys(defaults.fees)) {
+          const v = Number.parseFloat(savedSettings.fees[ex])
+          if (Number.isFinite(v) && v >= 0 && v <= 5) this.settings.fees[ex] = v
+        }
       }
     }
 
@@ -76,18 +85,17 @@ class Store {
   }
 
   enabledPairs() {
-    return Object.entries(this.settings.pairs)
-      .filter(([, enabled]) => enabled)
-      .map(([pair]) => pair)
+    const disabled = new Set(this.settings.disabledPairs)
+    return getPairs().filter((pair) => !disabled.has(pair))
   }
 
   async updateSettings(patch) {
-    const next = { ...this.settings }
+    const next = { ...this.settings, fees: { ...this.settings.fees } }
 
     if (patch.threshold !== undefined) {
       const t = Number.parseFloat(patch.threshold)
-      if (!Number.isFinite(t) || t <= 0 || t > 100) {
-        throw new Error('threshold must be a number between 0 and 100')
+      if (!Number.isFinite(t) || t <= -10 || t > 100) {
+        throw new Error('threshold must be a number between -10 and 100')
       }
       next.threshold = t
     }
@@ -100,17 +108,27 @@ class Store {
       next.cooldownMinutes = c
     }
 
-    if (patch.pairs !== undefined) {
-      if (typeof patch.pairs !== 'object' || patch.pairs === null) {
-        throw new Error('pairs must be an object of { "PAIR": boolean }')
+    if (patch.fees !== undefined) {
+      if (typeof patch.fees !== 'object' || patch.fees === null) {
+        throw new Error('fees must be an object of { "Exchange": feePct }')
       }
-      const pairs = { ...next.pairs }
-      for (const [pair, enabled] of Object.entries(patch.pairs)) {
-        if (config.supportedPairs.includes(pair)) {
-          pairs[pair] = Boolean(enabled)
+      for (const [ex, raw] of Object.entries(patch.fees)) {
+        if (!(ex in config.defaultFees)) continue
+        const v = Number.parseFloat(raw)
+        if (!Number.isFinite(v) || v < 0 || v > 5) {
+          throw new Error(`fee for ${ex} must be a number between 0 and 5`)
         }
+        next.fees[ex] = v
       }
-      next.pairs = pairs
+    }
+
+    if (patch.disabledPairs !== undefined) {
+      if (!Array.isArray(patch.disabledPairs)) {
+        throw new Error('disabledPairs must be an array of pair strings')
+      }
+      next.disabledPairs = patch.disabledPairs
+        .filter((p) => typeof p === 'string' && /^[A-Z0-9]{1,15}\/USDT$/.test(p))
+        .slice(0, 500)
     }
 
     this.settings = next

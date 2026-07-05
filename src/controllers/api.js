@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { state } from '../engine.js'
 import { store } from '../services/store.js'
 import * as telegram from '../services/telegram.js'
+import { getUniverse } from '../services/universe.js'
 
 export const apiRouter = Router()
 
@@ -13,6 +14,7 @@ apiRouter.get('/state', (_req, res) => {
     telegramConfigured: telegram.isConfigured(),
     exchanges: state.exchanges,
     spreads: state.spreads,
+    universe: getUniverse(),
     settings: store.getSettings(),
     alerts: store.getAlerts(50),
   })

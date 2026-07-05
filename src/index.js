@@ -24,7 +24,7 @@ app.get('/', (_req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'))
 })
 
-const server = app.listen(config.port, '0.0.0.0', () => {
+const server = app.listen(config.port, () => {
   log.info(`listening on port ${config.port}`)
   startEngine()
 })

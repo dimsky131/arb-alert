@@ -16,14 +16,13 @@ const HOSTS = ['https://api.binance.com', 'https://data-api.binance.vision']
  * Returns Map<pair, { exchange, pair, price, ts }>
  */
 export async function fetchPrices(pairs) {
-  const symbols = pairs.map(toSymbol)
-  const query = `symbols=${encodeURIComponent(JSON.stringify(symbols))}`
-
+  // Fetch ALL spot prices in one request — with ~100 monitored pairs this is
+  // cheaper and simpler than a giant symbols=[...] query string.
   let data
   let lastError
   for (const host of HOSTS) {
     try {
-      data = await fetchJson(`${host}/api/v3/ticker/price?${query}`, { label: 'binance', retries: 1 })
+      data = await fetchJson(`${host}/api/v3/ticker/price`, { label: 'binance', timeoutMs: 8000, retries: 1 })
       break
     } catch (err) {
       lastError = err

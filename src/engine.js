@@ -2,14 +2,18 @@ import { config } from './config.js'
 import * as binance from './services/exchanges/binance.js'
 import * as bybit from './services/exchanges/bybit.js'
 import * as okx from './services/exchanges/okx.js'
+import * as kucoin from './services/exchanges/kucoin.js'
+import * as gate from './services/exchanges/gate.js'
+import * as mexc from './services/exchanges/mexc.js'
 import { computeSpreads } from './services/spread.js'
 import { store } from './services/store.js'
 import * as telegram from './services/telegram.js'
+import { startUniverseRefresh, stopUniverseRefresh } from './services/universe.js'
 import { createLogger } from './utils/logger.js'
 
 const log = createLogger('engine')
 
-const exchanges = [binance, bybit, okx]
+const exchanges = [binance, bybit, okx, kucoin, gate, mexc]
 
 // Live state exposed to the API layer.
 export const state = {
@@ -54,14 +58,15 @@ async function tick() {
     }
   })
 
-  const spreads = computeSpreads(healthyResults, pairs)
+  const spreads = computeSpreads(healthyResults, pairs, settings.fees)
   state.spreads = spreads
   state.lastTickAt = Date.now()
   state.tickCount++
 
-  // Alerting
+  // Alerting — threshold applies to the NET spread (after taker fees on both legs).
   for (const spread of spreads) {
-    if (spread.spreadPct < settings.threshold) continue
+    if (spread.netPct < settings.threshold) continue
+    if (spread.buy.exchange === spread.sell.exchange) continue
     if (telegram.isOnCooldown(spread.pair, settings.cooldownMinutes)) continue
 
     const message = telegram.formatAlertMessage(spread)
@@ -73,13 +78,15 @@ async function tick() {
       pair: spread.pair,
       buy: spread.buy,
       sell: spread.sell,
-      spreadPct: Number(spread.spreadPct.toFixed(4)),
+      grossPct: Number(spread.grossPct.toFixed(4)),
+      feePct: Number(spread.feePct.toFixed(4)),
+      netPct: Number(spread.netPct.toFixed(4)),
       threshold: settings.threshold,
       delivered,
       ts: spread.ts,
     })
 
-    log.info('alert', { pair: spread.pair, spreadPct: spread.spreadPct.toFixed(2), delivered })
+    log.info('alert', { pair: spread.pair, netPct: spread.netPct.toFixed(2), delivered })
   }
 }
 
@@ -98,15 +105,17 @@ async function loop() {
 export function startEngine() {
   log.info('starting', {
     pollIntervalMs: config.pollIntervalMs,
-    pairs: store.enabledPairs(),
+    pairs: store.enabledPairs().length,
     threshold: store.getSettings().threshold,
     telegramConfigured: telegram.isConfigured(),
   })
+  startUniverseRefresh()
   loop()
 }
 
 export function stopEngine() {
   stopped = true
   if (timer) clearTimeout(timer)
+  stopUniverseRefresh()
   log.info('stopped')
 }

@@ -16,7 +16,9 @@ export function formatAlertMessage(spread) {
     spread.pair,
     `Buy: ${spread.buy.exchange} ${spread.buy.price}`,
     `Sell: ${spread.sell.exchange} ${spread.sell.price}`,
-    `Spread: ${spread.spreadPct.toFixed(2)}%`,
+    `Gross spread: ${spread.grossPct.toFixed(2)}%`,
+    `Fees (both legs): ${spread.feePct.toFixed(2)}%`,
+    `Net spread: ${spread.netPct.toFixed(2)}%`,
   ].join('\n')
 }
 
